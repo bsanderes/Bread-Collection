@@ -1,0 +1,219 @@
+# -*- coding: utf-8 -*-
+
+import arcpy
+
+
+class Toolbox:
+    def __init__(self):
+        """Define the toolbox (the name of the toolbox is the name of the
+        .pyt file)."""
+        self.label = "sanders877_GEOG5223_ATOMS_Python_Toolbox"
+        self.alias = "ATOMS Toolbox"
+
+        # List of tool classes associated with this toolbox
+        self.tools = [Tool]
+
+
+class Tool:
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = "Market Share Analysis Tool"
+        self.description = "Market Share"
+
+    def getParameterInfo(self):
+        """Define the tool parameters."""
+
+        # A feature that will contain points that market share analysis will be created around
+        in_features_point = arcpy.Parameter(
+            displayName   = "Input point features",
+            name          = "in_features_point",
+            datatype      = "GPFeatureLayer",
+            parameterType = "Required",
+            direction     = "Input")
+        in_features_point.filter.list = ["Point"]
+
+        # A field from in_features_point that the polygons will be dissolved around
+        in_unique_field = arcpy.arcpy.Parameter(
+            displayName   = "Name Field",
+            name          = "in_unique_field",
+            datatype      = "Field",
+            parameterType = "Required",
+            direction     = "Input")
+        in_unique_field.filter.list = ['String']
+        in_unique_field.parameterDependencies = [in_features_point.name]
+
+        # A feature that contains polygons that represent population(or some other data) collection areas
+        in_features_polygon = arcpy.Parameter(
+            displayName   = "Input polygon features",
+            name          = "in_features_polygon",
+            datatype      = "GPFeatureLayer",
+            parameterType = "Required",
+            direction     = "Input")
+        in_features_polygon.filter.list = ["Polygon"]
+
+        # A field containing the area of each polygon from in_features_polygon
+        in_area_field = arcpy.Parameter(
+            displayName   = "Polygon old area field",
+            name          = "in_area_field",
+            datatype      = "Field",
+            parameterType = "Required",
+            direction     = "Input")
+        in_area_field.filter.list = ['Double']
+        in_area_field.parameterDependencies = [in_features_polygon.name]
+
+        # A field that matches a field from the data table for the polygons  
+        in_join_field = arcpy.Parameter(
+            displayName   = "Polygon join field",
+            name          = "in_join_field",
+            datatype      = "Field",
+            parameterType = "Required",
+            direction     = "Input")
+        in_join_field.filter.list = ['String']
+        in_join_field.parameterDependencies = [in_features_polygon.name]
+
+        # The data table for in_features_polygon
+        in_population_table = arcpy.Parameter(
+            displayName   = "Data table for polygons",
+            name          = "in_population_table",
+            datatype      = "GPTableView",
+            parameterType = "Required",
+            direction     = "Input")
+
+        # A field from in_population_table that matches a field from in_features_polygon
+        in_table_join_field = arcpy.Parameter(
+            displayName   = "Table join field",
+            name          = "in_table_join_field",
+            datatype      = "Field",
+            parameterType = "Required",
+            direction     = "Input")
+        in_table_join_field.parameterDependencies = [in_population_table.name]
+
+        # A field from in_population_table that contains the population data.
+        in_table_population_field = arcpy.Parameter(
+            displayName   = "Population field",
+            name          = "in_table_population_field",
+            datatype      = "Field",
+            parameterType = "Required",
+            direction     = "Input")
+        in_table_population_field.parameterDependencies = [in_population_table.name]
+
+        # The user will pick between two different kinds of maps to present their data
+        in_map_type = arcpy.Parameter(
+            displayName = 'Type of map',
+            name = 'in_map_type',
+            datatype = 'GPString',
+            parameterType = 'Required',
+            direction = 'Input')
+        in_map_type.filter.list = ['Graduated colors', 'Graduated symbols']
+
+        # The user will choose how many classes the choropleth/proportional symbols map will have
+        in_num_classes = arcpy.Parameter(
+            displayName = 'Number of Classes',
+            name = 'in_num_classes',
+            datatype = 'GPLong',
+            parameterType = 'Required',
+            direction = 'Input')
+        in_num_classes.value = 5
+
+        # The output of the tool    
+        out_feature_class = arcpy.Parameter(
+            displayName   = "Market Share",
+            name          = "out_feature_class",
+            datatype      = "DEFeatureClass",
+            parameterType = "Required",
+            direction     = "Output")
+
+        params = [in_features_point, in_unique_field, in_features_polygon,
+                  in_area_field, in_join_field, in_population_table,
+                  in_table_join_field, in_table_population_field, in_map_type,
+                  in_num_classes, out_feature_class]
+        return params
+
+    def isLicensed(self):
+        """Set whether the tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+        return
+
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter. This method is called after internal validation."""
+        return
+
+    def execute(self, parameters, messages):
+        """The source code of the tool."""
+
+        in_features_point         = parameters[0].valueAsText
+        in_unique_field           = parameters[1].valueAsText
+        in_features_polygon       = parameters[2].valueAsText
+        in_area_field             = parameters[3].valueAsText
+        in_join_field             = parameters[4].valueAsText
+        in_population_table       = parameters[5].valueAsText
+        in_table_join_field       = parameters[6].valueAsText
+        in_table_population_field = parameters[7].valueAsText
+        in_map_type               = parameters[8].valueAsText
+        in_num_classes            = parameters[9].valueAsText
+        out_feature_class         = parameters[10].valueAsText
+
+        # Step 1 - Create thiessen polygons based on library locations
+        desc = arcpy.da.Describe(in_features_polygon)
+        arcpy.env.extent = desc['extent']
+
+        out_features_thiessen_polygons = arcpy.env.scratchGDB + '/thiessen_tmp' # Intermediate
+        arcpy.analysis.CreateThiessenPolygons(in_features_point, out_features_thiessen_polygons, 'ALL')
+
+        # Step 2 - intersect the thiessen polygons with tracts
+
+        out_features_intersect = arcpy.env.scratchGDB + '/intersect_tmp'
+        arcpy.analysis.Intersect([out_features_thiessen_polygons, in_features_polygon], out_features_intersect, 'ALL')
+
+        # Step 3 - Join intersection output with population table
+
+        arcpy.management.JoinField(out_features_intersect, in_join_field, in_population_table, in_table_join_field, [in_table_population_field])
+
+        # Step 4 - Get the proportions
+
+        new_population_field = 'NewPop'
+
+        # This formula find the population of each thiessen polygon
+        formula = f'!{in_table_population_field}! * !Shape_Area! / !{in_area_field}!'
+        arcpy.management.CalculateField(out_features_intersect, new_population_field, formula, field_type='DOUBLE', expression_type='PYTHON3')
+
+        # Step 5 - Dissolve the joined layer
+
+        # Dissolve the featuresusing the field 'NAME' from the beginning of the code, referenced as in_unique_field and set the output to an intermediate file
+        out_features_dissolved = arcpy.env.scratchGDB + '/dissolved_tmp'
+        arcpy.management.Dissolve(out_features_intersect, out_features_dissolved, in_unique_field, [[new_population_field, 'SUM']])
+
+        # Step 6 - Get population total
+
+        total_population = 0
+        cursor = arcpy.da.SearchCursor(out_features_dissolved, ['SUM_' + new_population_field])
+
+        # Get the population from each row with a cursor and add it to the total
+        for row in cursor:
+            total_population += row[0]
+
+        # Step 7 - Compute the percent of population in each of the the dissolved polygons
+
+        # Add a new field for the proportional population to occupy with the AddField function
+        percent_population_field = 'PercentPop'
+        arcpy.management.AddField(out_features_dissolved, percent_population_field, 'DOUBLE', field_alias='Percent')
+
+        # Create a formula that compares the population of each thiessen polygon with the total population to fill the PercentPop field using the CalculateField function
+        formula_percent = f'(!SUM_{new_population_field}! / {total_population}) * 100'
+        arcpy.management.CalculateField(out_features_dissolved, percent_population_field, formula_percent, field_type='DOUBLE', expression_type='PYTHON3')
+
+        # Step 8 - Copy the final result into out_feature_class
+        arcpy.management.CopyFeatures(out_features_dissolved, out_feature_class)
+        
+        return
+
+    def postExecute(self, parameters):
+        """This method takes place after outputs are processed and
+        added to the display."""
+        return
