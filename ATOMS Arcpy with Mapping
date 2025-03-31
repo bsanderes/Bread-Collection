@@ -210,6 +210,30 @@ class Tool:
 
         # Step 8 - Copy the final result into out_feature_class
         arcpy.management.CopyFeatures(out_features_dissolved, out_feature_class)
+
+        # Step 9 - Create the symbology for the output
+        aprx = arcpy.mp.ArcGISProject("CURRENT")
+        active_map = aprx.activeMap
+
+        # Add the output layer to the map
+        layer = ap.addDataFromPath(out_feature_class)
+
+        if in_map_type == 'Graduated colors':
+            # Set renderer to Graduated Colors using PercentPop
+            sym = layer.symbology
+            sym.updateRenderer('GraduatedColorsRenderer')
+            sym.renderer.classificationField = percent_population_field
+            sym.renderer.breakCount = in_num_classes
+            sym.renderer.colorRamp = aprx.listColorRamps("Blue to Red")[0]  # You can pick other ramps
+            new_layer.symbology = sym
+
+        elif in_map_type == 'Graduated symbols':
+            # Set renderer to Graduated Symbols using SUM_NewPop
+            sym = layer.symbology
+            sym.updateRenderer('GraduatedSymbolsRenderer')
+            sym.renderer.classificationField = 'SUM_' + new_population_field
+            sym.renderer.breakCount = in_num_classes
+            new_layer.symbology = sym
         
         return
 
